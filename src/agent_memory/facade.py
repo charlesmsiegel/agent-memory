@@ -70,15 +70,28 @@ def _is_within(base: Path, target: Path) -> bool:
 
 
 def _should_respond(gc: GroupChatConfig, *, was_mentioned: bool, is_direct: bool) -> bool:
-    """Check group chat config to decide if the agent should respond."""
+    """Check group chat config to decide if the agent should respond.
+
+    Returns True unconditionally when group chat is disabled (1:1 mode).
+    When enabled, the logic is:
+      1. quiet_unless_mentioned=True → only respond when explicitly mentioned.
+      2. Direct messages are accepted if respond_to_direct is set.
+      3. Mentions are accepted if respond_to_mentions is set.
+      4. Otherwise, respond freely unless quiet_unless_mentioned is on.
+    """
+    # 1:1 mode — always respond
     if not gc.enabled:
         return True
+    # Quiet mode: ignore everything except explicit mentions
     if gc.quiet_unless_mentioned and not was_mentioned:
         return False
+    # Accept direct messages when configured
     if is_direct and gc.respond_to_direct:
         return True
+    # Accept mentions when configured
     if was_mentioned and gc.respond_to_mentions:
         return True
+    # Fall-through: respond freely unless we're in quiet mode
     return not gc.quiet_unless_mentioned
 
 

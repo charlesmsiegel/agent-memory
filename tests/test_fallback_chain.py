@@ -68,6 +68,14 @@ def test_dimensions_from_first_provider() -> None:
     assert chain.dimensions == 512
 
 
+def test_dimensions_follows_active_after_fallback() -> None:
+    """After fallback, dimensions should reflect the active (fallback) provider."""
+    chain = FallbackChain([BrokenProvider(), WorkingProvider(dims=768)])
+    chain.embed("test")  # triggers fallback
+    assert chain.active_provider.dimensions == 768
+    assert chain.dimensions == 768
+
+
 def test_embed_batch_fallback() -> None:
     chain = FallbackChain([BrokenProvider(), WorkingProvider(dims=3)])
     results = chain.embed_batch(["a", "b"])

@@ -6,32 +6,32 @@ where pyclawmem hooks into your agent's lifecycle.
 
 from __future__ import annotations
 
-from pyclawmem import load_config
-from pyclawmem.context.compaction import apply_compaction, compact, needs_compaction
-from pyclawmem.context.pruning import prune_stale_context
-from pyclawmem.context.session import SessionStore
-from pyclawmem.context.session_export import export_session_to_markdown
-from pyclawmem.context.window_guard import evaluate_guard, resolve_context_window
-from pyclawmem.memory.auto_capture import auto_capture
-from pyclawmem.memory.auto_recall import auto_recall
-from pyclawmem.memory.embeddings import resolve_embeddings
-from pyclawmem.memory.facts import FactStore
-from pyclawmem.memory.manager import MemoryManager
-from pyclawmem.memory.store import MemoryStore
-from pyclawmem.memory.types import MessageRole, SessionMessage
-from pyclawmem.personality.identity import resolve_assistant_identity, resolve_message_prefix
-from pyclawmem.personality.presence import (
+from . import load_config
+from .context.compaction import apply_compaction, compact, needs_compaction
+from .context.pruning import prune_stale_context
+from .context.session import SessionStore
+from .context.session_export import export_session_to_markdown
+from .context.window_guard import evaluate_guard, resolve_context_window
+from .memory.auto_capture import auto_capture
+from .memory.auto_recall import auto_recall
+from .memory.embeddings import resolve_embeddings
+from .memory.facts import FactStore
+from .memory.manager import MemoryManager
+from .memory.store import MemoryStore
+from .memory.types import MessageRole, SessionMessage
+from .personality.identity import resolve_assistant_identity, resolve_message_prefix
+from .personality.presence import (
     HumanDelay,
     TypingMode,
     apply_human_delay,
     resolve_typing_mode,
 )
-from pyclawmem.personality.soul import (
+from .personality.soul import (
     apply_soul_evil_override,
     decide_soul_evil,
     load_soul,
 )
-from pyclawmem.personality.workspace import (
+from .personality.workspace import (
     build_context_prompt,
     ensure_workspace,
     load_bootstrap_files,
@@ -40,7 +40,8 @@ from pyclawmem.personality.workspace import (
 
 def create_agent_context(config_path: str | None = None) -> dict:
     """Initialize all pyclawmem subsystems from CONFIG.yaml."""
-    cfg = load_config()
+    from pathlib import Path
+    cfg = load_config(Path(config_path) if config_path else None)
     emb_cfg = cfg["embedding"]
     mem_cfg = cfg["memory"]
     ctx_cfg = cfg["context"]

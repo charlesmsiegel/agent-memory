@@ -44,6 +44,12 @@ def test_normalize_zero_vector() -> None:
     assert vec == [0.0, 0.0, 0.0]
 
 
+def test_normalize_near_zero_vector() -> None:
+    """Near-zero vectors (magnitude < 1e-10) are treated as zero to avoid instability."""
+    vec = normalize([1e-15, 1e-15])
+    assert vec == [1e-15, 1e-15]  # returned as-is, not amplified
+
+
 def test_normalize_handles_nan() -> None:
     vec = normalize([float("nan"), 1.0])
     assert not any(math.isnan(x) for x in vec)

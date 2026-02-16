@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from .config import HeartbeatConfig
 
 
 def _now() -> datetime:
-    """Current UTC time. Patchable for tests."""
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+    """Current UTC time (timezone-aware). Patchable for tests."""
+    return datetime.now(timezone.utc)
 
 
 class HeartbeatScheduler:
@@ -28,18 +29,21 @@ class HeartbeatScheduler:
     ) -> None:
         self._config = config
         self._workspace_dir = Path(workspace_dir)
-        self._user_timezone = user_timezone
+        self._tz = ZoneInfo(user_timezone)
         self._last_run: dict[str, datetime] = {}
 
     def is_quiet_hours(self) -> bool:
-        """Check if current time falls within quiet hours window."""
+        """Check if current time falls within quiet hours window.
+
+        Quiet hours are compared in the user's configured timezone.
+        """
         start = self._config.quiet_start
         end = self._config.quiet_end
         if not start or not end:
             return False
 
-        now = _now()
-        now_minutes = now.hour * 60 + now.minute
+        local_now = _now().astimezone(self._tz)
+        now_minutes = local_now.hour * 60 + local_now.minute
         start_h, start_m = (int(x) for x in start.split(":"))
         end_h, end_m = (int(x) for x in end.split(":"))
         start_minutes = start_h * 60 + start_m

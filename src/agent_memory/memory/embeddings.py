@@ -28,7 +28,7 @@ def normalize(vec: list[float]) -> list[float]:
     arr = np.array(vec, dtype=np.float64)
     arr = np.nan_to_num(arr, nan=0.0, posinf=0.0, neginf=0.0)
     mag = np.linalg.norm(arr)
-    if mag == 0:
+    if mag < 1e-10:
         return arr.tolist()
     return (arr / mag).tolist()
 
@@ -44,7 +44,7 @@ class FallbackChain:
 
     @property
     def dimensions(self) -> int:
-        return self._providers[0].dimensions
+        return self._active.dimensions
 
     @property
     def active_provider(self) -> EmbeddingProvider:
