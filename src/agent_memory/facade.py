@@ -60,6 +60,15 @@ class PreparedCall:
     flushed: bool = False
 
 
+def _is_within(base: Path, target: Path) -> bool:
+    """Return True if *target* resolves to a path under *base*."""
+    try:
+        target.resolve().relative_to(base.resolve())
+        return True
+    except ValueError:
+        return False
+
+
 def _should_respond(gc: GroupChatConfig, *, was_mentioned: bool, is_direct: bool) -> bool:
     """Check group chat config to decide if the agent should respond."""
     if not gc.enabled:
@@ -645,6 +654,8 @@ class AgentMemory:
         if name == "workspace_read":
             filename = input_data["filename"]
             filepath = Path(self._workspace_dir) / filename
+            if not _is_within(Path(self._workspace_dir), filepath):
+                return f"Access denied: path escapes workspace"
             if not filepath.is_file():
                 return f"File not found: {filename}"
             return filepath.read_text(encoding="utf-8")
@@ -655,6 +666,8 @@ class AgentMemory:
             if filename not in self._WRITABLE_FILES:
                 return f"Not allowed: {filename}. Allowed: {', '.join(sorted(self._WRITABLE_FILES))}"
             filepath = Path(self._workspace_dir) / filename
+            if not _is_within(Path(self._workspace_dir), filepath):
+                return f"Access denied: path escapes workspace"
             filepath.write_text(content, encoding="utf-8")
             return f"Written: {filename} ({len(content)} chars)"
 
@@ -663,6 +676,8 @@ class AgentMemory:
             # Resolve relative to memory_dir or workspace_dir
             for base in (Path(self._memory_dir), Path(self._workspace_dir)):
                 candidate = base / raw_path
+                if not _is_within(base, candidate):
+                    continue
                 if candidate.is_file():
                     all_lines = candidate.read_text(encoding="utf-8").splitlines()
                     from_line = input_data.get("from_line", 1)
@@ -684,13 +699,13 @@ def _load_recent_daily_logs(memory_dir: str) -> str | None:
 
     Looks for files matching YYYY-MM-DD*.md pattern.
     """
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
 
     d = Path(memory_dir)
     if not d.is_dir():
         return None
 
-    today = datetime.utcnow().date()
+    today = datetime.now(timezone.utc).date()
     yesterday = today - timedelta(days=1)
     prefixes = [today.isoformat(), yesterday.isoformat()]
 

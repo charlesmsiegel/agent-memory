@@ -1,5 +1,7 @@
 """pyclawmem — Memory, personality, and context continuity for LLM agents."""
 
+__version__ = "0.1.0"
+
 from pathlib import Path
 
 import yaml

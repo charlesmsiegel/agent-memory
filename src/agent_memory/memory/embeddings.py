@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
+import logging
+
 import numpy as np
+
+log = logging.getLogger(__name__)
 
 
 @runtime_checkable
@@ -27,11 +31,6 @@ def normalize(vec: list[float]) -> list[float]:
     if mag == 0:
         return arr.tolist()
     return (arr / mag).tolist()
-
-
-import logging
-
-log = logging.getLogger(__name__)
 
 
 class FallbackChain:

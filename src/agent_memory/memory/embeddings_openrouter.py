@@ -46,6 +46,10 @@ class OpenRouterEmbeddings:
             return []
         return self._request(texts)
 
+    def close(self) -> None:
+        """Close the underlying HTTP client."""
+        self._client.close()
+
     def _request(self, texts: list[str]) -> list[list[float]]:
         resp = self._client.post(
             "/embeddings",

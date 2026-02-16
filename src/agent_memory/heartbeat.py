@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .config import HeartbeatConfig
@@ -10,7 +10,7 @@ from .config import HeartbeatConfig
 
 def _now() -> datetime:
     """Current UTC time. Patchable for tests."""
-    return datetime.utcnow()
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 class HeartbeatScheduler:
