@@ -9,6 +9,7 @@ description = "Memory, personality, and context continuity for LLM agents"
 requires-python = ">=3.11"
 dependencies = [
     "boto3>=1.34",
+    "httpx>=0.27",
     "numpy>=1.26",
     "pydantic>=2.0",
     "pyyaml>=6.0",
@@ -16,3 +17,4 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
+local = ["llama-cpp-python>=0.3"]
