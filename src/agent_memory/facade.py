@@ -21,11 +21,13 @@ from .context.session_export import export_session_to_markdown
 from .context.window_guard import evaluate_guard, resolve_context_window
 from .memory.auto_capture import auto_capture
 from .memory.auto_recall import auto_recall
-from .memory.embeddings_bedrock import BedrockEmbeddings
+from .config import AgentConfig, GroupChatConfig
+from .heartbeat import HeartbeatScheduler
+from .memory.embeddings import resolve_embeddings
 from .memory.facts import FactStore
 from .memory.manager import MemoryManager
 from .memory.store import MemoryStore
-from .memory.types import MessageRole, SessionEntry, SessionMessage
+from .memory.types import CitationMode, MessageRole, PromptMode, SessionEntry, SessionMessage
 from .personality.identity import (
     AssistantIdentity,
     resolve_assistant_identity,
@@ -45,6 +47,7 @@ class Session:
     system_prompt: str = ""
     compaction_count: int = 0
     flush_at_compaction: int | None = None
+    _sandboxed: bool = False
 
 
 @dataclass
@@ -55,6 +58,19 @@ class PreparedCall:
     system_prompt: str
     compacted: bool = False
     flushed: bool = False
+
+
+def _should_respond(gc: GroupChatConfig, *, was_mentioned: bool, is_direct: bool) -> bool:
+    """Check group chat config to decide if the agent should respond."""
+    if not gc.enabled:
+        return True
+    if gc.quiet_unless_mentioned and not was_mentioned:
+        return False
+    if is_direct and gc.respond_to_direct:
+        return True
+    if was_mentioned and gc.respond_to_mentions:
+        return True
+    return not gc.quiet_unless_mentioned
 
 
 class AgentMemory:
@@ -98,6 +114,12 @@ class AgentMemory:
         # Presence config (optional)
         human_delay: HumanDelay | None = None,
         typing_mode: TypingMode | None = None,
+        # NEW: agent config
+        agent_config: AgentConfig | None = None,
+        # NEW: context features
+        prompt_mode: PromptMode = PromptMode.FULL,
+        citation_mode: CitationMode = CitationMode.AUTO,
+        bootstrap_max_chars: int = 20_000,
     ) -> None:
         self._memory = memory
         self._facts = facts
@@ -119,6 +141,21 @@ class AgentMemory:
         self._human_delay = human_delay
         self._typing_mode = typing_mode
 
+        self._agent_config = agent_config or AgentConfig()
+        self._prompt_mode = prompt_mode
+        self._citation_mode = citation_mode
+        self._bootstrap_max_chars = bootstrap_max_chars
+
+        # Heartbeat
+        if self._agent_config.heartbeat.enabled:
+            self._heartbeat: HeartbeatScheduler | None = HeartbeatScheduler(
+                self._agent_config.heartbeat,
+                workspace_dir=workspace_dir,
+                user_timezone=user_timezone,
+            )
+        else:
+            self._heartbeat = None
+
         # Resolve identity once
         self._assistant = resolve_assistant_identity(workspace_dir=workspace_dir)
         self._prefix = resolve_message_prefix(workspace_dir=workspace_dir)
@@ -139,11 +176,7 @@ class AgentMemory:
         llm_cfg = cfg["llm"]
         ws_dir = cfg["workspace"]["dir"]
 
-        embeddings = BedrockEmbeddings(
-            model_id=emb_cfg["model_id"],
-            region=emb_cfg["region"],
-            dimensions=emb_cfg["dimensions"],
-        )
+        embeddings = resolve_embeddings(emb_cfg)
         store = MemoryStore(mem_cfg["db_path"])
         memory = MemoryManager(
             store, embeddings,
@@ -161,6 +194,8 @@ class AgentMemory:
         sessions = SessionStore(ctx_cfg["session_dir"])
         memory_dir = mem_cfg["memory_dir"]
 
+        agent_cfg = AgentConfig.from_dict(cfg.get("agent", {}))
+
         return cls(
             memory=memory,
             facts=facts,
@@ -174,6 +209,10 @@ class AgentMemory:
             compaction_threshold=ctx_cfg.get("compaction_threshold", 0.85),
             summary_preserve=ctx_cfg.get("summary_preserve", "decisions, TODOs, open questions"),
             session_dir=ctx_cfg["session_dir"],
+            agent_config=agent_cfg,
+            prompt_mode=PromptMode(ctx_cfg.get("prompt_mode", "full")),
+            citation_mode=CitationMode(mem_cfg.get("citations", "auto")),
+            bootstrap_max_chars=ctx_cfg.get("bootstrap_max_chars", 20_000),
         )
 
     # -- Properties --
@@ -202,41 +241,50 @@ class AgentMemory:
         is_subagent: bool = False,
     ) -> Session:
         """Start a new session: ensure workspace, build system prompt, sync memory."""
-        ensure_workspace(self._workspace_dir)
+        sandboxed = self._is_sandboxed(is_main_session)
+
+        if not sandboxed:
+            ensure_workspace(self._workspace_dir)
 
         if self._guard.should_block:
             raise RuntimeError(
                 f"Context window {self._guard.tokens} tokens is below hard minimum."
             )
 
-        # Load personality with security scoping
-        files = load_bootstrap_files(
-            self._workspace_dir,
-            is_main_session=is_main_session,
-            is_subagent=is_subagent,
-        )
+        # Resolve effective prompt mode
+        effective_mode = self._prompt_mode
+        if is_subagent:
+            effective_mode = PromptMode.MINIMAL
 
-        # Soul-evil decision
-        soul = load_soul(self._workspace_dir)
-        decision = decide_soul_evil(
-            chance=self._soul_evil_chance,
-            purge_at=self._soul_evil_purge_at,
-            purge_duration=self._soul_evil_purge_duration,
-            evil_filename=self._soul_evil_filename,
-            user_timezone=self._user_timezone,
-        )
-        soul = apply_soul_evil_override(soul, self._workspace_dir, decision=decision)
+        if effective_mode == PromptMode.NONE:
+            name = self._assistant.name or "Assistant"
+            system_prompt = f"You are {name}."
+        else:
+            files = load_bootstrap_files(
+                self._workspace_dir,
+                is_main_session=is_main_session,
+                is_subagent=(effective_mode == PromptMode.MINIMAL),
+                max_chars_per_file=self._bootstrap_max_chars,
+            )
 
-        system_prompt = build_context_prompt(files)
+            # Soul-evil decision
+            soul = load_soul(self._workspace_dir)
+            decision = decide_soul_evil(
+                chance=self._soul_evil_chance,
+                purge_at=self._soul_evil_purge_at,
+                purge_duration=self._soul_evil_purge_duration,
+                evil_filename=self._soul_evil_filename,
+                user_timezone=self._user_timezone,
+            )
+            soul = apply_soul_evil_override(soul, self._workspace_dir, decision=decision)
+            system_prompt = build_context_prompt(files)
 
-        # Auto-load today + yesterday daily logs into context
-        daily_context = _load_recent_daily_logs(self._memory_dir)
-        if daily_context:
-            system_prompt += f"\n\n# Recent Daily Logs\n\n{daily_context}"
+            if effective_mode == PromptMode.FULL:
+                daily_context = _load_recent_daily_logs(self._memory_dir)
+                if daily_context:
+                    system_prompt += f"\n\n# Recent Daily Logs\n\n{daily_context}"
 
-        # Defer memory sync to first search (avoid blocking session start)
         self._needs_sync = True
-
         entry = self._sessions.create_session()
         messages = [
             SessionMessage(
@@ -245,7 +293,7 @@ class AgentMemory:
                 metadata={"type": "bootstrap_load"},
             )
         ]
-        return Session(entry=entry, messages=messages, system_prompt=system_prompt)
+        return Session(entry=entry, messages=messages, system_prompt=system_prompt, _sandboxed=sandboxed)
 
     def before_llm_call(self, user_input: str, session: Session) -> PreparedCall:
         """Prepare messages for an LLM call.
@@ -277,7 +325,7 @@ class AgentMemory:
         # Pre-compaction memory flush
         flushed = False
         total_tokens = _est_tokens(session.messages)
-        if should_run_memory_flush(
+        if not session._sandboxed and should_run_memory_flush(
             total_tokens=total_tokens,
             context_window_tokens=self._guard.tokens,
             compaction_count=session.compaction_count,
@@ -325,6 +373,8 @@ class AgentMemory:
 
     def end_session(self, session: Session) -> None:
         """End a session: auto-capture facts, export to markdown."""
+        if session._sandboxed:
+            return
         auto_capture(session.messages, self._facts)
         export_session_to_markdown(
             session.messages,
@@ -381,11 +431,52 @@ class AgentMemory:
             is_heartbeat=is_heartbeat,
         )
 
+    def should_respond(
+        self,
+        *,
+        was_mentioned: bool = False,
+        is_direct: bool = False,
+    ) -> bool:
+        """Check group chat config to decide if the agent should respond."""
+        return _should_respond(
+            self._agent_config.group_chat,
+            was_mentioned=was_mentioned,
+            is_direct=is_direct,
+        )
+
+    @property
+    def heartbeat(self) -> HeartbeatScheduler | None:
+        """The heartbeat scheduler, or None if disabled."""
+        return self._heartbeat
+
+    @property
+    def agent_config(self) -> AgentConfig:
+        """The agent configuration."""
+        return self._agent_config
+
+    def _should_show_citations(self) -> bool:
+        if self._citation_mode == CitationMode.ON:
+            return True
+        if self._citation_mode == CitationMode.OFF:
+            return False
+        # AUTO: show in main sessions, hide in group
+        if self._agent_config.group_chat.enabled:
+            return False
+        return True
+
+    def _is_sandboxed(self, is_main_session: bool) -> bool:
+        mode = self._agent_config.sandbox.mode
+        if mode == "all":
+            return True
+        if mode == "non-main" and not is_main_session:
+            return True
+        return False
+
     # -- Tools for LLM integration --
 
-    def get_tool_definitions(self) -> list[dict]:
+    def get_tool_definitions(self, *, session: Session | None = None) -> list[dict]:
         """Return tool definitions in Bedrock Converse toolSpec format."""
-        return [
+        tools = [
             {
                 "toolSpec": {
                     "name": "memory_search",
@@ -494,12 +585,27 @@ class AgentMemory:
                 }
             },
         ]
+        if session and session._sandboxed:
+            access = self._agent_config.sandbox.workspace_access
+            if access == "none":
+                tools = [t for t in tools if t["toolSpec"]["name"] not in ("workspace_read", "workspace_write")]
+            elif access == "ro":
+                tools = [t for t in tools if t["toolSpec"]["name"] != "workspace_write"]
+        return tools
 
     _WRITABLE_FILES = {"SOUL.md", "USER.md", "IDENTITY.md", "TOOLS.md",
                        "AGENTS.md", "HEARTBEAT.md", "BOOTSTRAP.md", "MEMORY.md"}
 
-    def execute_tool(self, name: str, input_data: dict) -> str:
+    def execute_tool(self, name: str, input_data: dict, *, session: Session | None = None) -> str:
         """Execute a tool call by name. Returns result text."""
+        sandboxed = session._sandboxed if session else False
+        ws_access = self._agent_config.sandbox.workspace_access
+
+        if name == "workspace_write" and sandboxed and ws_access != "rw":
+            return "Blocked: workspace writes are disabled in sandbox mode."
+        if name in ("workspace_read", "workspace_write") and sandboxed and ws_access == "none":
+            return "Blocked: workspace access is disabled in sandbox mode."
+
         if name == "memory_search":
             results = self.search_memory(
                 input_data["query"],
@@ -507,10 +613,13 @@ class AgentMemory:
             )
             if not results:
                 return "No results found."
+            show_citations = self._should_show_citations()
             lines = []
             for r in results:
                 snippet = r.snippet[:300].replace("\n", " ")
-                lines.append(f"[{r.source.value}:{r.path}] (score: {r.score:.2f}) {snippet}")
+                prefix = f"[{r.source.value}:{r.path}]"
+                suffix = f" Source: {r.citation}" if show_citations else ""
+                lines.append(f"{prefix} (score: {r.score:.2f}) {snippet}{suffix}")
             return "\n".join(lines)
 
         if name == "fact_recall":
