@@ -21,10 +21,7 @@ from .context.session_export import export_session_to_markdown
 from .context.window_guard import evaluate_guard, resolve_context_window
 from .memory.auto_capture import auto_capture
 from .memory.auto_recall import auto_recall
-try:
-    from .memory.embeddings import BedrockEmbeddings
-except ImportError:
-    BedrockEmbeddings = None  # type: ignore[assignment,misc]
+from .memory.embeddings_bedrock import BedrockEmbeddings
 from .memory.facts import FactStore
 from .memory.manager import MemoryManager
 from .memory.store import MemoryStore

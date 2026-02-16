@@ -8,10 +8,7 @@ import logging
 import os
 from pathlib import Path
 
-try:
-    from .embeddings import BedrockEmbeddings
-except ImportError:
-    BedrockEmbeddings = None  # type: ignore[assignment,misc]
+from .embeddings import EmbeddingProvider
 from .store import MemoryStore
 from .types import MemoryChunk, MemorySearchResult, MemorySource
 
@@ -27,7 +24,7 @@ class MemoryManager:
     def __init__(
         self,
         store: MemoryStore,
-        embeddings: BedrockEmbeddings,
+        embeddings: EmbeddingProvider,
         *,
         chunk_tokens: int = 400,
         chunk_overlap: int = 80,

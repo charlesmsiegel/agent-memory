@@ -11,10 +11,7 @@ from uuid import uuid4
 
 import numpy as np
 
-try:
-    from .embeddings import BedrockEmbeddings
-except ImportError:
-    BedrockEmbeddings = None  # type: ignore[assignment,misc]
+from .embeddings import EmbeddingProvider
 
 
 class FactCategory(str, Enum):
@@ -59,7 +56,7 @@ _DEDUP_THRESHOLD = 0.95
 class FactStore:
     """SQLite-backed store for conversational facts with vector dedup."""
 
-    def __init__(self, db_path: str | Path, embeddings: BedrockEmbeddings) -> None:
+    def __init__(self, db_path: str | Path, embeddings: EmbeddingProvider) -> None:
         path = Path(db_path).expanduser()
         path.parent.mkdir(parents=True, exist_ok=True)
         self._conn = sqlite3.connect(str(path))
