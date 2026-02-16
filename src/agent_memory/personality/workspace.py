@@ -115,6 +115,7 @@ def load_bootstrap_files(
     *,
     is_subagent: bool = False,
     is_main_session: bool = True,
+    max_chars_per_file: int = 20_000,
 ) -> list[BootstrapFile]:
     """Load all bootstrap files from the workspace directory.
 
@@ -134,6 +135,8 @@ def load_bootstrap_files(
         p = d / name
         if p.is_file():
             content = p.read_text(encoding="utf-8")
+            if len(content) > max_chars_per_file:
+                content = content[:max_chars_per_file] + f"\n\n[... truncated at {max_chars_per_file} chars]"
             result.append(BootstrapFile(name=name, path=str(p), content=content))
         else:
             result.append(BootstrapFile(name=name, path=str(p), missing=True))
