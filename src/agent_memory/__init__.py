@@ -15,6 +15,25 @@ def load_config(path: Path | None = None) -> dict:
 
 
 # Public API
+from .config import AgentConfig, GroupChatConfig, HeartbeatConfig, SandboxConfig  # noqa: E402
 from .facade import AgentMemory, PreparedCall, Session  # noqa: E402
+from .heartbeat import HeartbeatScheduler  # noqa: E402
+from .memory.embeddings import EmbeddingProvider, FallbackChain, resolve_embeddings  # noqa: E402
+from .memory.types import CitationMode, PromptMode  # noqa: E402
 
-__all__ = ["AgentMemory", "Session", "PreparedCall", "load_config"]
+__all__ = [
+    "AgentMemory",
+    "Session",
+    "PreparedCall",
+    "load_config",
+    "EmbeddingProvider",
+    "FallbackChain",
+    "resolve_embeddings",
+    "AgentConfig",
+    "SandboxConfig",
+    "GroupChatConfig",
+    "HeartbeatConfig",
+    "HeartbeatScheduler",
+    "CitationMode",
+    "PromptMode",
+]

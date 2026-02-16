@@ -14,7 +14,7 @@ from pyclawmem.context.session_export import export_session_to_markdown
 from pyclawmem.context.window_guard import evaluate_guard, resolve_context_window
 from pyclawmem.memory.auto_capture import auto_capture
 from pyclawmem.memory.auto_recall import auto_recall
-from pyclawmem.memory.embeddings_bedrock import BedrockEmbeddings
+from pyclawmem.memory.embeddings import resolve_embeddings
 from pyclawmem.memory.facts import FactStore
 from pyclawmem.memory.manager import MemoryManager
 from pyclawmem.memory.store import MemoryStore
@@ -46,11 +46,7 @@ def create_agent_context(config_path: str | None = None) -> dict:
     ctx_cfg = cfg["context"]
     ws_dir = cfg["workspace"]["dir"]
 
-    embeddings = BedrockEmbeddings(
-        model_id=emb_cfg["model_id"],
-        region=emb_cfg["region"],
-        dimensions=emb_cfg["dimensions"],
-    )
+    embeddings = resolve_embeddings(emb_cfg)
     store = MemoryStore(mem_cfg["db_path"])
     memory = MemoryManager(
         store, embeddings,
