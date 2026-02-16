@@ -14,7 +14,10 @@ from pyclawmem.context.session_export import export_session_to_markdown
 from pyclawmem.context.window_guard import evaluate_guard, resolve_context_window
 from pyclawmem.memory.auto_capture import auto_capture
 from pyclawmem.memory.auto_recall import auto_recall
-from pyclawmem.memory.embeddings import BedrockEmbeddings
+try:
+    from pyclawmem.memory.embeddings import BedrockEmbeddings
+except ImportError:
+    BedrockEmbeddings = None  # type: ignore[assignment,misc]
 from pyclawmem.memory.facts import FactStore
 from pyclawmem.memory.manager import MemoryManager
 from pyclawmem.memory.store import MemoryStore

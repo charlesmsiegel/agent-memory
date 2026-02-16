@@ -11,7 +11,10 @@ from uuid import uuid4
 
 import numpy as np
 
-from .embeddings import BedrockEmbeddings
+try:
+    from .embeddings import BedrockEmbeddings
+except ImportError:
+    BedrockEmbeddings = None  # type: ignore[assignment,misc]
 
 
 class FactCategory(str, Enum):

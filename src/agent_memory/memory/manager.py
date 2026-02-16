@@ -8,7 +8,10 @@ import logging
 import os
 from pathlib import Path
 
-from .embeddings import BedrockEmbeddings
+try:
+    from .embeddings import BedrockEmbeddings
+except ImportError:
+    BedrockEmbeddings = None  # type: ignore[assignment,misc]
 from .store import MemoryStore
 from .types import MemoryChunk, MemorySearchResult, MemorySource
 
