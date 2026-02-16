@@ -19,6 +19,22 @@ class MemorySource(str, Enum):
     SESSIONS = "sessions"
 
 
+class CitationMode(str, Enum):
+    """How to display source citations in search results."""
+
+    AUTO = "auto"
+    ON = "on"
+    OFF = "off"
+
+
+class PromptMode(str, Enum):
+    """Controls how much system prompt content is included."""
+
+    FULL = "full"
+    MINIMAL = "minimal"
+    NONE = "none"
+
+
 class MemorySearchResult(BaseModel):
     """A single search hit from the memory store."""
 
@@ -28,6 +44,11 @@ class MemorySearchResult(BaseModel):
     score: float
     snippet: str
     source: MemorySource
+
+    @property
+    def citation(self) -> str:
+        """Format as path#Lstart-Lend."""
+        return f"{self.path}#L{self.start_line}-L{self.end_line}"
 
 
 class MemoryChunk(BaseModel):
